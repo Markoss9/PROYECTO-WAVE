@@ -1,59 +1,99 @@
 """
-Módulo de Estructuras de Datos
-Contiene las implementaciones requeridas por el programa de la materia (Unidad 2, 3 y 6).
-Se evitan librerías avanzadas, implementando la lógica manualmente.
+Módulo de Estructuras de Datos (Unidades 2, 3 y 6)
+Implementaciones propias de Tabla Hash auto-redimensionable,
+Cola de Prioridad (Min-Heap) y Merge Sort.
 """
 
 class NodoHash:
     """Nodo para manejar colisiones en la Tabla Hash por encadenamiento."""
-    def __init__(self, clave, valor):
+    __slots__ = ('clave', 'valor', 'siguiente')
+
+    def __init__(self, clave, valor, siguiente=None):
         self.clave = clave
         self.valor = valor
-        self.siguiente = None
+        self.siguiente = siguiente
+
 
 class TablaHash:
     """
-    Implementación de Diccionario con Tabla Hash (Unidad 3).
-    Utiliza redireccionamiento abierto/encadenamiento para las colisiones.
+    Diccionario con Tabla Hash auto-redimensionable (Unidad 3).
+    Mantiene factor de carga <= 0.75 para garantizar operaciones O(1) promedio.
     """
-    def __init__(self, capacidad=100):
-        self.capacidad = capacidad
+    def __init__(self, capacidad_inicial=1031):
+        self.capacidad = max(11, capacidad_inicial)
         self.tamano = 0
-        self.tabla = [None] * capacidad
+        self.tabla = [None] * self.capacidad
 
     def _hash(self, clave):
-        """Función hash simple para strings e ints."""
+        """Dispersión rápida para tuplas (x, y) y polinómica para strings/enteros."""
+        if isinstance(clave, tuple) and len(clave) == 2:
+            return ((clave[0] * 73856093) ^ (clave[1] * 19349663)) % self.capacidad
+        if isinstance(clave, int):
+            return (clave * 2654435761) % self.capacidad
+
         h = 0
         for char in str(clave):
             h = (h * 31 + ord(char)) % self.capacidad
         return h
 
-    def insertar(self, clave, valor):
-        """Inserta o actualiza un valor en la tabla."""
+    def _redimensionar(self):
+        """Duplica la capacidad de la tabla cuando supera el 75% de ocupación."""
+        tabla_vieja = self.tabla
+        self.capacidad = (self.capacidad * 2) + 1
+        self.tabla = [None] * self.capacidad
+        self.tamano = 0
+
+        for nodo in tabla_vieja:
+            actual = nodo
+            while actual is not None:
+                self._insertar_sin_redimensionar(actual.clave, actual.valor)
+                actual = actual.siguiente
+
+    def _insertar_sin_redimensionar(self, clave, valor):
         indice = self._hash(clave)
         actual = self.tabla[indice]
-        while actual:
+        while actual is not None:
             if actual.clave == clave:
                 actual.valor = valor
                 return
             actual = actual.siguiente
-        nuevo_nodo = NodoHash(clave, valor)
-        nuevo_nodo.siguiente = self.tabla[indice]
-        self.tabla[indice] = nuevo_nodo
+        self.tabla[indice] = NodoHash(clave, valor, self.tabla[indice])
         self.tamano += 1
 
-    def obtener(self, clave):
-        """Devuelve el valor asociado a la clave, o None si no existe."""
+    def insertar(self, clave, valor):
+        """Inserta o actualiza un valor, redimensionando si es necesario."""
+        if self.tamano >= self.capacidad * 0.75:
+            self._redimensionar()
+        self._insertar_sin_redimensionar(clave, valor)
+
+    def obtener(self, clave, por_defecto=None):
+        """Devuelve el valor asociado a la clave, o por_defecto si no existe."""
         indice = self._hash(clave)
         actual = self.tabla[indice]
-        while actual:
+        while actual is not None:
             if actual.clave == clave:
                 return actual.valor
             actual = actual.siguiente
-        return None
+        return por_defecto
+
+    def eliminar(self, clave):
+        """Elimina una clave de la tabla si existe."""
+        indice = self._hash(clave)
+        actual = self.tabla[indice]
+        previo = None
+        while actual is not None:
+            if actual.clave == clave:
+                if previo is None:
+                    self.tabla[indice] = actual.siguiente
+                else:
+                    previo.siguiente = actual.siguiente
+                self.tamano -= 1
+                return True
+            previo = actual
+            actual = actual.siguiente
+        return False
 
     def contiene(self, clave):
-        """Verifica si la clave existe en la tabla."""
         return self.obtener(clave) is not None
 
     def valores(self):
@@ -61,89 +101,113 @@ class TablaHash:
         resultado = []
         for nodo in self.tabla:
             actual = nodo
-            while actual:
+            while actual is not None:
                 resultado.append(actual.valor)
                 actual = actual.siguiente
         return resultado
 
+    def claves(self):
+        """Retorna una lista con todas las claves almacenadas."""
+        resultado = []
+        for nodo in self.tabla:
+            actual = nodo
+            while actual is not None:
+                resultado.append(actual.clave)
+                actual = actual.siguiente
+        return resultado
+
+    def __len__(self):
+        return self.tamano
+
+    def __contains__(self, clave):
+        return self.contiene(clave)
+
+
 class ColaPrioridad:
-    """
-    Implementación de Min-Heap para la Cola de Prioridad del Algoritmo de Dijkstra (Unidad 2/4).
-    """
+    """Implementación de Min-Heap binario para Dijkstra (Unidad 2 y 4)."""
     def __init__(self):
         self.heap = []
 
-    def _padre(self, i): return (i - 1) // 2
-    def _hijo_izq(self, i): return 2 * i + 1
-    def _hijo_der(self, i): return 2 * i + 2
-
     def insertar(self, prioridad, elemento):
-        """Inserta un elemento manteniendo la propiedad de min-heap."""
         self.heap.append((prioridad, elemento))
         self._flotar(len(self.heap) - 1)
 
     def extraer_min(self):
-        """Extrae el elemento con la menor prioridad."""
-        if not self.heap: return None
-        if len(self.heap) == 1: return self.heap.pop()
+        if not self.heap:
+            return None
+        if len(self.heap) == 1:
+            return self.heap.pop()
         raiz = self.heap[0]
         self.heap[0] = self.heap.pop()
         self._hundir(0)
         return raiz
 
     def _flotar(self, i):
-        while i > 0 and self.heap[self._padre(i)][0] > self.heap[i][0]:
-            p = self._padre(i)
-            self.heap[i], self.heap[p] = self.heap[p], self.heap[i]
-            i = p
+        heap = self.heap
+        while i > 0:
+            padre = (i - 1) // 2
+            if heap[padre][0] > heap[i][0]:
+                heap[i], heap[padre] = heap[padre], heap[i]
+                i = padre
+            else:
+                break
 
     def _hundir(self, i):
-        min_idx = i
-        izq = self._hijo_izq(i)
-        der = self._hijo_der(i)
-        n = len(self.heap)
-        
-        if izq < n and self.heap[izq][0] < self.heap[min_idx][0]:
-            min_idx = izq
-        if der < n and self.heap[der][0] < self.heap[min_idx][0]:
-            min_idx = der
-            
-        if min_idx != i:
-            self.heap[i], self.heap[min_idx] = self.heap[min_idx], self.heap[i]
-            self._hundir(min_idx)
+        heap = self.heap
+        n = len(heap)
+        while True:
+            min_idx = i
+            izq = 2 * i + 1
+            der = 2 * i + 2
+
+            if izq < n and heap[izq][0] < heap[min_idx][0]:
+                min_idx = izq
+            if der < n and heap[der][0] < heap[min_idx][0]:
+                min_idx = der
+
+            if min_idx != i:
+                heap[i], heap[min_idx] = heap[min_idx], heap[i]
+                i = min_idx
+            else:
+                break
 
     def esta_vacia(self):
         return len(self.heap) == 0
 
+    def __len__(self):
+        return len(self.heap)
+
+
 def merge_sort(lista, key=lambda x: x, reverso=False):
-    """
-    Algoritmo de ordenamiento Divide y Vencerás (Unidad 6).
-    """
+    """Algoritmo de ordenamiento Divide y Vencerás en O(N log N) (Unidad 6)."""
     if len(lista) <= 1:
         return lista
-    
+
     medio = len(lista) // 2
     izq = merge_sort(lista[:medio], key, reverso)
     der = merge_sort(lista[medio:], key, reverso)
-    
+
     return _merge(izq, der, key, reverso)
+
 
 def _merge(izq, der, key, reverso):
     resultado = []
     i = j = 0
-    while i < len(izq) and j < len(der):
+    len_izq, len_der = len(izq), len(der)
+
+    while i < len_izq and j < len_der:
         val_izq = key(izq[i])
         val_der = key(der[j])
-        
-        condicion = val_izq >= val_der if reverso else val_izq <= val_der
-        
+        condicion = (val_izq >= val_der) if reverso else (val_izq <= val_der)
         if condicion:
             resultado.append(izq[i])
             i += 1
         else:
             resultado.append(der[j])
             j += 1
-            
-    resultado.extend(izq[i:])
-    resultado.extend(der[j:])
+
+    if i < len_izq:
+        resultado.extend(izq[i:])
+    if j < len_der:
+        resultado.extend(der[j:])
     return resultado

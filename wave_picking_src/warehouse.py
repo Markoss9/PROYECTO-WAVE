@@ -1,17 +1,14 @@
 """
 Módulo del Warehouse
-Modelado de la estructura física usando grafos (Unidad 4).
+Modelado de la estructura física, grilla celular y Grafo Dirigido (Unidad 4).
 """
 from estructuras import TablaHash
 
+
 class GrafoWarehouse:
-    """
-    Grafo no dirigido para representar los pasillos del Warehouse (Unidad 4).
-    Nodos: Coordenadas (x, y) de los pasillos.
-    Aristas: Conexiones entre nodos adyacentes de pasillo con peso de distancia.
-    """
-    def __init__(self):
-        self.adj = TablaHash(1000) # Lista de adyacencia usando TablaHash propia
+    """Grafo DIRIGIDO para representar los pasillos del Warehouse y sus sentidos."""
+    def __init__(self, capacidad=3007):
+        self.adj = TablaHash(capacidad)
         self.nodos = []
 
     def agregar_nodo(self, nodo):
@@ -20,72 +17,118 @@ class GrafoWarehouse:
             self.nodos.append(nodo)
 
     def agregar_arista(self, u, v, peso=1):
-        """Agrega una arista no dirigida entre u y v."""
-        self.adj.obtener(u).append((v, peso))
-        self.adj.obtener(v).append((u, peso))
+        vecinos = self.adj.obtener(u)
+        if vecinos is not None and (v, peso) not in vecinos:
+            vecinos.append((v, peso))
+
 
 class Warehouse:
-    """
-    Representación del Almacén, inventario, pedidos y zonas de despacho.
-    """
-    def __init__(self, num_pasillos, largo_pasillo):
-        self.num_pasillos = num_pasillos
-        self.largo = largo_pasillo
-        self.grafo = GrafoWarehouse()
-        self.productos = TablaHash(500)
-        self.pedidos = TablaHash(500)
+    """Representación geométrica y lógica del Almacén, inventario y pedidos."""
+    def __init__(self, ancho_x=18, largo_y=16):
+        self.ancho_x = int(ancho_x)
+        self.largo_y = int(largo_y)
+        self.largo = self.largo_y
+        self.num_pasillos = max(1, self.ancho_x // 3)
+
+        self.grafo = GrafoWarehouse(max(3007, self.ancho_x * self.largo_y * 2))
+        self.productos = TablaHash(1009)
+        self.pedidos = TablaHash(1009)
+
+        self.puertas = []
+        self.zonas_despacho = []
+        self.racks = []
+        self.pasillos = []
+        self.pickers = []
+
+        self.wave_max_pedidos = 3
+        self.wave_max_productos = 15
+
+        self.grilla_tipo = {}
+        self.grilla_sentido = {}
         self.zona_despacho = (0, 0)
-        
-        self._construir_grafo()
 
-    def _construir_grafo(self):
-        """
-        Construye el grafo en base a una cuadrícula (grid).
-        Los pasillos de movimiento se encuentran en x = 0, 3, 6, etc.
-        Los racks se ubican en los espacios intermedios (x = 1, 2).
-        """
-        ancho_total = self.num_pasillos * 3
-        
-        # 1. Crear nodos y conexiones verticales (dentro del mismo pasillo)
-        for x in range(0, ancho_total, 3):
-            for y in range(self.largo):
+    def construir_estructura(self):
+        self.grafo = GrafoWarehouse(max(3007, self.ancho_x * self.largo_y * 2))
+        self.grilla_tipo.clear()
+        self.grilla_sentido.clear()
+
+        for x in range(self.ancho_x):
+            for y in range(self.largo_y):
+                self.grilla_tipo[(x, y)] = "PASILLO"
+                self.grilla_sentido[(x, y)] = "AMBOS"
+
+        for pas in self.pasillos:
+            for x in range(pas.x, pas.x + pas.ancho):
+                for y in range(pas.y, pas.y + pas.alto):
+                    if 0 <= x < self.ancho_x and 0 <= y < self.largo_y:
+                        self.grilla_sentido[(x, y)] = pas.sentido
+
+        for rack in self.racks:
+            for x, y in rack.celdas():
+                if 0 <= x < self.ancho_x and 0 <= y < self.largo_y:
+                    self.grilla_tipo[(x, y)] = "RACK"
+
+        for zona in self.zonas_despacho:
+            for x, y in zona.celdas():
+                if 0 <= x < self.ancho_x and 0 <= y < self.largo_y:
+                    self.grilla_tipo[(x, y)] = "ZONA_DESPACHO"
+
+        for puerta in self.puertas:
+            if 0 <= puerta.x < self.ancho_x and 0 <= puerta.y < self.largo_y:
+                self.grilla_tipo[(puerta.x, puerta.y)] = "PUERTA"
+
+        for (x, y), tipo in self.grilla_tipo.items():
+            if tipo == "PASILLO":
                 self.grafo.agregar_nodo((x, y))
-                if y > 0:
-                    self.grafo.agregar_arista((x, y-1), (x, y))
 
-        # 2. Crear pasillos transversales (conexiones horizontales en extremos)
-        # Permiten al picker cambiar de pasillo por arriba o por abajo.
-        for x in range(0, ancho_total - 3, 3):
-            # Transversal superior (y = 0)
-            self.grafo.agregar_nodo((x+1, 0))
-            self.grafo.agregar_nodo((x+2, 0))
-            self.grafo.agregar_arista((x, 0), (x+1, 0))
-            self.grafo.agregar_arista((x+1, 0), (x+2, 0))
-            self.grafo.agregar_arista((x+2, 0), (x+3, 0))
+        for (x, y) in self.grafo.nodos:
+            s_orig = self.grilla_sentido[(x, y)]
+            for nx, ny, dir_mov in [(x, y+1, "N"), (x, y-1, "S"), (x+1, y, "E"), (x-1, y, "O")]:
+                if self.grilla_tipo.get((nx, ny)) != "PASILLO":
+                    continue
+                s_dest = self.grilla_sentido[(nx, ny)]
+                if self._movimiento_permitido(s_orig, s_dest, dir_mov):
+                    self.grafo.agregar_arista((x, y), (nx, ny), peso=1)
 
-            # Transversal inferior (y = largo - 1)
-            self.grafo.agregar_nodo((x+1, self.largo-1))
-            self.grafo.agregar_nodo((x+2, self.largo-1))
-            self.grafo.agregar_arista((x, self.largo-1), (x+1, self.largo-1))
-            self.grafo.agregar_arista((x+1, self.largo-1), (x+2, self.largo-1))
-            self.grafo.agregar_arista((x+2, self.largo-1), (x+3, self.largo-1))
+        self.zona_despacho = self.obtener_acceso_zona_despacho()
 
-        # 3. Definir zona de despacho en el punto central del transversal inferior
-        centro_x = ((ancho_total // 2) // 3) * 3
-        self.zona_despacho = (centro_x, self.largo - 1)
+    def _movimiento_permitido(self, s_orig, s_dest, dir_mov):
+        if dir_mov == "N" and (s_orig == "S" or s_dest == "S"): return False
+        if dir_mov == "S" and (s_orig == "N" or s_dest == "N"): return False
+        if dir_mov == "E" and (s_orig == "O" or s_dest == "O"): return False
+        if dir_mov == "O" and (s_orig == "E" or s_dest == "E"): return False
+        return True
+
+    def obtener_acceso_zona_despacho(self):
+        if not self.zonas_despacho:
+            return self.grafo.nodos[0] if self.grafo.nodos else (0, 0)
+        zona = self.zonas_despacho[0]
+        cx, cy = zona.x + zona.ancho // 2, zona.y + zona.alto
+        if self.grilla_tipo.get((cx, cy)) == "PASILLO":
+            return (cx, cy)
+        for x in range(zona.x, zona.x + zona.ancho):
+            for ny in (zona.y + zona.alto, zona.y - 1):
+                if self.grilla_tipo.get((x, ny)) == "PASILLO":
+                    return (x, ny)
+        return self.grafo.nodos[0] if self.grafo.nodos else (0, 0)
 
     def obtener_nodo_acceso(self, x, y):
-        """
-        Dado un rack en (x, y), retorna el nodo del pasillo adyacente para poder accederlo.
-        """
-        if x % 3 == 1:
-            return (x - 1, y) # El pasillo está a la izquierda
-        if x % 3 == 2:
-            ancho_total = self.num_pasillos * 3
-            if x + 1 >= ancho_total:
-                return (x - 2, y) # No hay pasillo a la derecha, acceder por la izquierda
-            return (x + 1, y) # El pasillo está a la derecha
-        return (x, y) # Ya es una coordenada de pasillo
+        if self.grilla_tipo.get((x, y)) == "PASILLO":
+            return (x, y)
+        for rack in self.racks:
+            if rack.contiene_celda(x, y):
+                if rack.ancho == 2:
+                    cand = (x - 1, y) if x == rack.x else (x + 1, y)
+                    if self.grilla_tipo.get(cand) == "PASILLO":
+                        return cand
+                elif rack.alto == 2:
+                    cand = (x, y - 1) if y == rack.y else (x, y + 1)
+                    if self.grilla_tipo.get(cand) == "PASILLO":
+                        return cand
+        for nx, ny in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]:
+            if self.grilla_tipo.get((nx, ny)) == "PASILLO":
+                return (nx, ny)
+        return (x, y)
 
     def registrar_producto(self, prod):
         self.productos.insertar(prod.id_prod, prod)
