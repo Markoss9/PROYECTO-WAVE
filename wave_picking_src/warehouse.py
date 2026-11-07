@@ -297,3 +297,131 @@ class Warehouse:
                 f"{len(self.zonas_despacho)} zonas, {len(self.puertas)} puertas) están dentro de "
                 f"{self.ancho_x}x{self.largo_y} y sin solapamientos."
             )
+
+        # 2. Todos los racks tienen un lado de valor 2
+        if not self.racks:
+            errores.append("El Warehouse debe tener al menos un rack.")
+        else:
+            racks_invalidos = [
+                r.id_rack for r in self.racks
+                if (r.ancho != 2 and r.alto != 2) or r.ancho < 1 or r.alto < 1
+            ]
+            if racks_invalidos:
+                errores.append(f"Racks sin un lado de valor 2: {', '.join(racks_invalidos)}.")
+            else:
+                checks_ok.append(f"✔ Todos los racks ({len(self.racks)}) tienen un lado de valor 2.")
+
+        # 3. Todas las puertas están sobre el borde
+        if not self.puertas:
+            errores.append("El Warehouse debe tener al menos una puerta.")
+        else:
+            puertas_no_borde = [
+                p.id_puerta for p in self.puertas
+                if not (p.x in (0, self.ancho_x - 1) or p.y in (0, self.largo_y - 1))
+            ]
+            if puertas_no_borde:
+                errores.append(f"Puertas fuera del borde perimetral: {', '.join(puertas_no_borde)}.")
+            else:
+                checks_ok.append(f"✔ Todas las puertas ({len(self.puertas)}) están ubicadas sobre el borde.")
+
+        # 4. Frente a cada puerta hay una zona de despacho
+        puertas_sin_zona = []
+        for p in self.puertas:
+            frentes = []
+            if p.y == 0:
+                frentes.append((p.x, 1))
+            if p.y == self.largo_y - 1:
+                frentes.append((p.x, self.largo_y - 2))
+            if p.x == 0:
+                frentes.append((1, p.y))
+            if p.x == self.ancho_x - 1:
+                frentes.append((self.ancho_x - 2, p.y))
+
+            tiene_zona = False
+            for fx, fy in frentes:
+                for z in self.zonas_despacho:
+                    if z.contiene_celda(fx, fy) and (not z.puerta_id or z.puerta_id == p.id_puerta):
+                        tiene_zona = True
+                        break
+            if not tiene_zona:
+                puertas_sin_zona.append(p.id_puerta)
+
+        if puertas_sin_zona:
+            errores.append(f"Puertas sin zona de despacho enfrente: {', '.join(puertas_sin_zona)}.")
+        elif self.puertas:
+            checks_ok.append("✔ Frente a cada puerta existe una zona de despacho válida.")
+
+        # 5. Todos los productos están ubicados dentro de un rack
+        prods_lista = self.productos.valores()
+        prods_fuera_rack = []
+        for pr in prods_lista:
+            en_rack = any(
+                r.contiene_celda(pr.x, pr.y) and (pr.rack_id is None or pr.rack_id == r.id_rack)
+                for r in self.racks
+            )
+            if not en_rack:
+                prods_fuera_rack.append(pr.id_prod)
+
+        if prods_fuera_rack:
+            errores.append(f"Productos fuera de un rack: {', '.join(prods_fuera_rack[:8])}.")
+        else:
+            checks_ok.append(f"✔ Todos los productos ({len(prods_lista)}) están ubicados dentro de un rack.")
+
+        # 6. Alcanzabilidad desde la zona de despacho respetando el sentido de circulación de los pasillos
+        nodos_pasillo = {
+            (x, y) for (x, y), t in self.grilla_tipo.items() if t == "PASILLO"
+        }
+        adj_estricto = {u: [] for u in nodos_pasillo}
+        inv_estricto = {u: [] for u in nodos_pasillo}
+        for (x, y) in nodos_pasillo:
+            s_orig = self.grilla_sentido.get((x, y), "AMBOS")
+            for nx, ny, dir_mov in [(x, y + 1, "N"), (x, y - 1, "S"), (x + 1, y, "E"), (x - 1, y, "O")]:
+                if (nx, ny) not in nodos_pasillo:
+                    continue
+                s_dest = self.grilla_sentido.get((nx, ny), "AMBOS")
+                if self._movimiento_permitido(s_orig, s_dest, dir_mov):
+                    adj_estricto[(x, y)].append((nx, ny))
+                    inv_estricto[(nx, ny)].append((x, y))
+
+        semilla_despacho = self.obtener_acceso_zona_despacho()
+        if semilla_despacho not in nodos_pasillo:
+            errores.append("La zona de despacho no tiene acceso a ningún pasillo transitable.")
+        else:
+            alc_ida = {semilla_despacho}
+            cola = [semilla_despacho]
+            while cola:
+                curr = cola.pop(0)
+                for vec in adj_estricto.get(curr, []):
+                    if vec not in alc_ida:
+                        alc_ida.add(vec)
+                        cola.append(vec)
+
+            alc_vuelta = {semilla_despacho}
+            cola = [semilla_despacho]
+            while cola:
+                curr = cola.pop(0)
+                for orig in inv_estricto.get(curr, []):
+                    if orig not in alc_vuelta:
+                        alc_vuelta.add(orig)
+                        cola.append(orig)
+
+            conectados_ida_y_vuelta = alc_ida & alc_vuelta
+
+            prods_inalcanzables = []
+            for pr in prods_lista:
+                nodo_acc = self._celda_acceso_estricta(pr.x, pr.y, conectados_ida_y_vuelta)
+                if nodo_acc is None:
+                    prods_inalcanzables.append(pr.id_prod)
+
+            if prods_inalcanzables:
+                errores.append(
+                    f"Productos inalcanzables respetando sentido de pasillos: {', '.join(prods_inalcanzables[:8])}."
+                )
+            else:
+                checks_ok.append(
+                    "✔ Todas las ubicaciones requeridas son alcanzables desde la zona de despacho "
+                    "respetando el sentido de circulación de los pasillos."
+                )
+
+        return (len(errores) == 0), errores, checks_ok
+
