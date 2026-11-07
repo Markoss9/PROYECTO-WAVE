@@ -1,6 +1,7 @@
 """
 Módulo del Warehouse
-Modelado de la estructura física, grilla celular y Grafo Dirigido (Unidad 4).
+Modelado de la estructura física, grafo dirigido de circulación, grilla celular
+y validación formal de restricciones estructurales y operativas.
 """
 from estructuras import TablaHash
 
@@ -27,8 +28,6 @@ class Warehouse:
     def __init__(self, ancho_x=18, largo_y=16):
         self.ancho_x = int(ancho_x)
         self.largo_y = int(largo_y)
-        self.largo = self.largo_y
-        self.num_pasillos = max(1, self.ancho_x // 3)
 
         self.grafo = GrafoWarehouse(max(3007, self.ancho_x * self.largo_y * 2))
         self.productos = TablaHash(1009)
@@ -45,6 +44,7 @@ class Warehouse:
 
         self.grilla_tipo = {}
         self.grilla_sentido = {}
+        self.nodos_transitables = set()
         self.zona_despacho = (0, 0)
 
     def construir_estructura(self):
@@ -90,6 +90,7 @@ class Warehouse:
                 if self._movimiento_permitido(s_orig, s_dest, dir_mov):
                     self.grafo.agregar_arista((x, y), (nx, ny), peso=1)
 
+        self._asegurar_conectividad_fuerte()
         self.zona_despacho = self.obtener_acceso_zona_despacho()
 
     def _movimiento_permitido(self, s_orig, s_dest, dir_mov):
@@ -98,40 +99,3 @@ class Warehouse:
         if dir_mov == "E" and (s_orig == "O" or s_dest == "O"): return False
         if dir_mov == "O" and (s_orig == "E" or s_dest == "E"): return False
         return True
-
-    def obtener_acceso_zona_despacho(self):
-        if not self.zonas_despacho:
-            return self.grafo.nodos[0] if self.grafo.nodos else (0, 0)
-        zona = self.zonas_despacho[0]
-        cx, cy = zona.x + zona.ancho // 2, zona.y + zona.alto
-        if self.grilla_tipo.get((cx, cy)) == "PASILLO":
-            return (cx, cy)
-        for x in range(zona.x, zona.x + zona.ancho):
-            for ny in (zona.y + zona.alto, zona.y - 1):
-                if self.grilla_tipo.get((x, ny)) == "PASILLO":
-                    return (x, ny)
-        return self.grafo.nodos[0] if self.grafo.nodos else (0, 0)
-
-    def obtener_nodo_acceso(self, x, y):
-        if self.grilla_tipo.get((x, y)) == "PASILLO":
-            return (x, y)
-        for rack in self.racks:
-            if rack.contiene_celda(x, y):
-                if rack.ancho == 2:
-                    cand = (x - 1, y) if x == rack.x else (x + 1, y)
-                    if self.grilla_tipo.get(cand) == "PASILLO":
-                        return cand
-                elif rack.alto == 2:
-                    cand = (x, y - 1) if y == rack.y else (x, y + 1)
-                    if self.grilla_tipo.get(cand) == "PASILLO":
-                        return cand
-        for nx, ny in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]:
-            if self.grilla_tipo.get((nx, ny)) == "PASILLO":
-                return (nx, ny)
-        return (x, y)
-
-    def registrar_producto(self, prod):
-        self.productos.insertar(prod.id_prod, prod)
-
-    def registrar_pedido(self, ped):
-        self.pedidos.insertar(ped.id_pedido, ped)
