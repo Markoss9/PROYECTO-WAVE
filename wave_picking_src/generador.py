@@ -130,3 +130,115 @@ class GeneradorWarehouse:
             y_sup = largo_y - alto_h_sup
             avenidas_conexion.append((0, y_sup, ancho_x, alto_h_sup, "AMBOS", "H"))
             
+            
+        else:
+            # Estantes horizontales: ancho = largo_estante, alto = 2 (lado de valor 2)
+            # Las calles con flechas (→ Este / ← Oeste) corren horizontalmente entre, debajo y encima de los racks
+            cols_racks = 1 if cant_estantes <= 3 else 2
+            filas_racks = math.ceil(cant_estantes / cols_racks)
+            ancho_pas_lat = 2
+            ancho_base = cols_racks * largo_estante + (cols_racks + 1) * ancho_pas_lat
+            ancho_min_puertas = cant_puertas * 6 + 2
+            while ancho_base < max(16, ancho_min_puertas):
+                ancho_pas_lat += 1
+                ancho_base = cols_racks * largo_estante + (cols_racks + 1) * ancho_pas_lat
+
+            ancho_x = ancho_base
+            alto_calle_h = 2
+            y_inicio_estiba = 4  # y=3 es el corredor de acceso a Zonas de Despacho
+            # Hay (filas_racks + 1) calles horizontales con flechas y (filas_racks) hileras de racks de alto 2
+            alto_bloque_estiba = (filas_racks + 1) * alto_calle_h + filas_racks * 2
+            largo_y = y_inicio_estiba + alto_bloque_estiba
+
+            # Corredor inferior frente a las zonas de despacho (y = 3)
+            avenidas_conexion.append((0, 3, ancho_x, 1, "AMBOS", "H"))
+
+            # Avenidas verticales de conexión (izquierda, central y derecha) en sentido AMBOS
+            for c in range(cols_racks + 1):
+                if c < cols_racks:
+                    x_av = c * (ancho_pas_lat + largo_estante)
+                    w_av = ancho_pas_lat
+                else:
+                    x_av = cols_racks * (ancho_pas_lat + largo_estante)
+                    w_av = ancho_x - x_av
+                avenidas_conexion.append((x_av, y_inicio_estiba, w_av, alto_bloque_estiba, "AMBOS", "V"))
+
+            # Crear las hileras de Racks Horizontales y las Calles Horizontales con flechas (→ / ←)
+            rack_idx = 1
+            for fila_calle in range(filas_racks + 1):
+                y_calle = y_inicio_estiba + fila_calle * (alto_calle_h + 2)
+                sent_h = ("E" if fila_calle % 2 == 0 else "O") if usar_mano_unica else "AMBOS"
+
+                for c in range(cols_racks):
+                    x_col = ancho_pas_lat + c * (largo_estante + ancho_pas_lat)
+                    calles_con_flechas.append((x_col, y_calle, largo_estante, alto_calle_h, sent_h, "H"))
+
+                    if fila_calle < filas_racks:
+                        y_r = y_calle + alto_calle_h
+                        if rack_idx <= cant_estantes:
+                            racks.append(Rack(f"R{rack_idx}", x_col, y_r, largo_estante, 2))
+                            rack_idx += 1
+                        else:
+                            # Si la cantidad de racks es impar y queda un hueco en la última fila/columna,
+                            # ese espacio forma parte de la calle horizontal con el mismo sentido
+                            calles_con_flechas.append((x_col, y_r, largo_estante, 2, sent_h, "H"))
+
+        # Puertas sobre el borde inferior (y = 0) y Zonas de Despacho justo enfrente (y = 1..2)
+        puertas = []
+        zonas_despacho = []
+        ancho_seg = ancho_x // cant_puertas
+        letras = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        for i in range(cant_puertas):
+            x_ini_seg = i * ancho_seg
+            x_fin_seg = (i + 1) * ancho_seg if i < cant_puertas - 1 else ancho_x
+            w_seg = x_fin_seg - x_ini_seg
+            ancho_z = min(5, max(3, w_seg - 2))
+            zx = x_ini_seg + max(1, (w_seg - ancho_z) // 2)
+            if zx + ancho_z >= ancho_x:
+                zx = max(1, ancho_x - ancho_z - 1)
+            px = zx + ancho_z // 2
+
+            tipo_p = "OUTBOUND" if i == 0 else ("INBOUND" if i == 1 and cant_puertas == 2 else "AMBOS")
+            id_p = f"PUERTA_{i + 1}"
+            id_z = f"ZONA_{letras[i % len(letras)]}"
+            puertas.append(Puerta(id_p, tipo_p, px, 0))
+            zonas_despacho.append(ZonaDespacho(id_z, id_p, zx, 1, ancho_z, 2, float(peso_max_zona_kg)))
+
+        # NUNCA truncar las calles con flechas que flanquean los racks: todas deben dibujarse siempre
+        cant_pasillos_obj = max(len(calles_con_flechas), int(cant_pasillos))
+        bloques_totales = list(calles_con_flechas) + list(avenidas_conexion)
+
+        if cant_pasillos_obj <= len(bloques_totales):
+            seleccionados = bloques_totales[:cant_pasillos_obj]
+        else:
+            seleccionados = list(bloques_totales)
+            # Si se solicitan más pasillos, subdividir únicamente las avenidas de conexión sin tocar las calles con flechas
+            intentos = 0
+            while len(seleccionados) < cant_pasillos_obj and intentos < 500:
+                intentos += 1
+                idx_mejor = -1
+                max_dim = 1
+                for idx_b, (bx, by, bw, bh, bs, bt) in enumerate(seleccionados):
+                    # Preferir subdividir avenidas AMBOS antes que calles con flechas
+                    prioridad_ambos = 100 if bs == "AMBOS" else 0
+                    dim = max(bw, bh)
+                    if dim >= 2 and (dim + prioridad_ambos) > max_dim:
+                        max_dim = dim + prioridad_ambos
+                        idx_mejor = idx_b
+                if idx_mejor == -1:
+                    break
+                bx, by, bw, bh, bs, bt = seleccionados.pop(idx_mejor)
+                if bw >= bh and bw >= 2:
+                    mitad = bw // 2
+                    seleccionados.insert(idx_mejor, (bx + mitad, by, bw - mitad, bh, bs, bt))
+                    seleccionados.insert(idx_mejor, (bx, by, mitad, bh, bs, bt))
+                elif bh >= 2:
+                    mitad = bh // 2
+                    seleccionados.insert(idx_mejor, (bx, by + mitad, bw, bh - mitad, bs, bt))
+                    seleccionados.insert(idx_mejor, (bx, by, bw, mitad, bs, bt))
+
+        pasillos = []
+        for idx_p, (px, py, pw, ph, psent, ptipo) in enumerate(seleccionados, start=1):
+            pasillos.append(Pasillo(f"PAS_{ptipo}{idx_p}", px, py, pw, ph, psent))
+
+        return ancho_x, largo_y, puertas, zonas_despacho, racks, pasillos
