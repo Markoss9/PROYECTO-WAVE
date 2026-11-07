@@ -196,3 +196,159 @@ class PersistenciaJSON:
             wh.estado_simulacion_guardado = None
 
         return wh
+
+    @staticmethod
+    def guardar_escenario(warehouse, ruta_archivo, estado_simulacion=None):
+        """
+        Exporta el estado actual del Warehouse y el progreso exacto de la simulación
+        a un archivo JSON para poder recuperarlo y continuar la simulación desde ese punto.
+        """
+        data = {
+            "warehouse": {
+                "dimensiones": {
+                    "ancho_x": warehouse.ancho_x,
+                    "largo_y": warehouse.largo_y
+                },
+                "puertas": [
+                    {
+                        "id": p.id_puerta,
+                        "tipo": p.tipo,
+                        "ubicacion": {"x": p.x, "y": p.y}
+                    }
+                    for p in warehouse.puertas
+                ],
+                "zonas_despacho": [
+                    {
+                        "id": z.id_zona,
+                        "puerta_id": z.puerta_id,
+                        "ubicacion": {"x": z.x, "y": z.y},
+                        "ancho": z.ancho,
+                        "alto": z.alto,
+                        "peso_max_kg": z.peso_max_kg
+                    }
+                    for z in warehouse.zonas_despacho
+                ],
+                "racks": [
+                    {
+                        "id": r.id_rack,
+                        "ubicacion": {"x": r.x, "y": r.y},
+                        "ancho": r.ancho,
+                        "alto": r.alto
+                    }
+                    for r in warehouse.racks
+                ],
+                "pasillos": [
+                    {
+                        "id": pas.id_pasillo,
+                        "ubicacion": {"x": pas.x, "y": pas.y},
+                        "ancho": pas.ancho,
+                        "alto": pas.alto,
+                        "sentido": pas.sentido
+                    }
+                    for pas in warehouse.pasillos
+                ]
+            },
+            "pickers": [
+                {
+                    "id": pk.id_picker,
+                    "posicion_inicial": {"x": pk.x_inicial, "y": pk.y_inicial},
+                    "capacidad_carga_kg": pk.capacidad_carga_kg
+                }
+                for pk in warehouse.pickers
+            ],
+            "productos": [
+                {
+                    "id": pr.id_prod,
+                    "nombre": pr.nombre,
+                    "rack_id": pr.rack_id,
+                    "ubicacion": {"x": pr.x, "y": pr.y, "z": pr.z},
+                    "cantidad_disponible": pr.stock,
+                    "peso_kg": pr.peso
+                }
+                for pr in warehouse.productos.valores()
+            ],
+            "pedidos": [
+                {
+                    "id": ped.id_pedido,
+                    "prioridad": ped.prioridad,
+                    "estado": ped.estado,
+                    "items": [
+                        {
+                            "producto_id": it.producto_id,
+                            "cantidad": it.cantidad_total,
+                            "cantidad_pendiente": it.cantidad_pendiente
+                        }
+                        for it in ped.items
+                    ]
+                }
+                for ped in warehouse.pedidos.valores()
+            ],
+            "configuracion": {
+                "wave_max_pedidos": warehouse.wave_max_pedidos,
+                "wave_max_productos": warehouse.wave_max_productos
+            }
+        }
+
+        if estado_simulacion is not None:
+            waves_serializadas = [
+                {
+                    "id_wave": w.id_wave,
+                    "picker_id": w.picker_id,
+                    "zona_despacho_id": w.zona_despacho_id,
+                    "lineas": [
+                        {
+                            "pedido_id": l.pedido_id,
+                            "producto_id": l.producto_id,
+                            "cantidad": l.cantidad,
+                            "peso_unitario": l.peso_unitario,
+                            "picker_id": l.picker_id
+                        }
+                        for l in w.lineas
+                    ]
+                }
+                for w in estado_simulacion.get("waves", [])
+            ]
+
+            planes_serializados = [
+                {
+                    "id_picker": p["id_picker"],
+                    "sector_corto": p.get("sector_corto", "Zona"),
+                    "cap_kg": p.get("cap_kg", 150.0),
+                    "color": p.get("color", "#00a8ff"),
+                    "historial": [list(coord) for coord in p.get("historial", [])],
+                    "estados_paso": [
+                        {
+                            "wave_madre": est.get("wave_madre"),
+                            "turno_id": est.get("turno_id"),
+                            "estado": est.get("estado", ""),
+                            "peso": est.get("peso", 0.0),
+                            "evento": est.get("evento", ""),
+                            "limpiar_rastro": est.get("limpiar_rastro", False),
+                            "prods_activos": [list(pa) for pa in est.get("prods_activos", [])]
+                        }
+                        for est in p.get("estados_paso", [])
+                    ],
+                    "desvios": p.get("desvios", 0)
+                }
+                for p in estado_simulacion.get("planes_activos", [])
+            ]
+
+            data["simulacion"] = {
+                "waves": waves_serializadas,
+                "planes_activos": planes_serializados,
+                "paso_actual": estado_simulacion.get("paso_actual", 0),
+                "estrategia": estado_simulacion.get("estrategia", "Estrategia B - Cercanía 3D (Greedy)"),
+                "permitir_ayuda_zonas": estado_simulacion.get("permitir_ayuda_zonas", False),
+                "modo_continuo": estado_simulacion.get("modo_continuo", True),
+                "wave_seleccionada_idx": estado_simulacion.get("wave_seleccionada_idx", 0),
+                "vel_simulacion": estado_simulacion.get("vel_simulacion", 0.12),
+                "factor_zoom": estado_simulacion.get("factor_zoom", 1.0),
+                "waves_completadas": list(estado_simulacion.get("waves_completadas", [])),
+                "cap_zonas_actual": estado_simulacion.get("cap_zonas_actual", {}),
+                "cap_zonas_por_paso": estado_simulacion.get("cap_zonas_por_paso", []),
+                "metricas_actuales": estado_simulacion.get("metricas_actuales", {}),
+                "log_eventos": estado_simulacion.get("log_eventos", [])
+            }
+
+        with open(ruta_archivo, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
