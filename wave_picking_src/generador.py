@@ -242,3 +242,187 @@ class GeneradorWarehouse:
             pasillos.append(Pasillo(f"PAS_{ptipo}{idx_p}", px, py, pw, ph, psent))
 
         return ancho_x, largo_y, puertas, zonas_despacho, racks, pasillos
+    @classmethod
+    def generar(
+        cls,
+        cant_estantes=4,
+        largo_estante=6,
+        orientacion_estantes="VERTICAL",
+        cant_pasillos=6,
+        sentido_pasillos="ALTERNADO",
+        cant_productos=12,
+        modo_localizacion="Equitativa por Estante y Zona (Balanceada)",
+        nivel_z_max=3,
+        ubicaciones_personalizadas=None,
+        cant_pedidos=6,
+        max_productos_por_pedido=4,
+        max_unidades_por_item=3,
+        wave_max_pedidos=3,
+        wave_max_productos=15,
+        cant_pickers=2,
+        cap_picker_kg=150.0,
+        cant_puertas=2,
+        peso_max_zona_kg=500.0
+    ):
+        """
+        Genera y retorna una instancia completa y validada de Warehouse con todos los parámetros configurados.
+        """
+        cant_estantes = max(1, int(cant_estantes))
+        cant_pasillos = max(1, int(cant_pasillos))
+        cant_productos = max(1, int(cant_productos))
+        nivel_z_max = max(1, min(3, int(nivel_z_max)))
+        cant_pedidos = max(1, int(cant_pedidos))
+        max_productos_por_pedido = max(1, int(max_productos_por_pedido))
+        max_unidades_por_item = max(1, int(max_unidades_por_item))
+        wave_max_pedidos = max(1, int(wave_max_pedidos))
+        wave_max_productos = max(1, int(wave_max_productos))
+        cant_pickers = max(1, int(cant_pickers))
+        cap_picker_kg = max(10.0, float(cap_picker_kg))
+
+        ancho_x, largo_y, puertas, zonas_despacho, racks, pasillos = cls.calcular_geometria_layout(
+            cant_estantes=cant_estantes,
+            largo_estante=largo_estante,
+            orientacion=orientacion_estantes,
+            cant_pasillos=cant_pasillos,
+            sentido_pasillos=sentido_pasillos,
+            cant_puertas=cant_puertas,
+            peso_max_zona_kg=peso_max_zona_kg
+        )
+
+        wh = Warehouse(ancho_x=ancho_x, largo_y=largo_y)
+        wh.puertas = puertas
+        wh.zonas_despacho = zonas_despacho
+        wh.racks = racks
+        wh.pasillos = pasillos
+        wh.wave_max_pedidos = wave_max_pedidos
+        wh.wave_max_productos = wave_max_productos
+
+        # Posicionar Pickers en el pasillo principal inferior (y = 3), repartidos en sus respectivas zonas
+        for i in range(cant_pickers):
+            seg_pk = ancho_x / cant_pickers
+            px_ini = int(round((i + 0.5) * seg_pk))
+            px_ini = max(1, min(ancho_x - 2, px_ini))
+            wh.pickers.append(Picker(f"PK_{i + 1:02d}", px_ini, 3, cap_picker_kg))
+
+        wh.construir_estructura()
+
+        # Recopilar todas las celdas válidas de todos los racks
+        celdas_por_rack = {r.id_rack: list(r.celdas()) for r in wh.racks}
+        todas_celdas_racks = [(r, cx, cy) for r in wh.racks for (cx, cy) in r.celdas()]
+
+        # Ordenamientos útiles según el modo de localización de productos elegido
+        modo_str = str(modo_localizacion)
+        if "Cercanos al Despacho" in modo_str:
+            candidatos_ordenados = sorted(todas_celdas_racks, key=lambda item: (item[2], item[1]))
+        elif "Fondo" in modo_str:
+            candidatos_ordenados = sorted(todas_celdas_racks, key=lambda item: (-item[2], item[1]))
+        elif "Izquierda" in modo_str:
+            mitad_x = ancho_x / 2.0
+            pref = [it for it in todas_celdas_racks if it[1] < mitad_x]
+            resto = [it for it in todas_celdas_racks if it[1] >= mitad_x]
+            candidatos_ordenados = pref + resto
+        elif "Derecha" in modo_str:
+            mitad_x = ancho_x / 2.0
+            pref = [it for it in todas_celdas_racks if it[1] >= mitad_x]
+            resto = [it for it in todas_celdas_racks if it[1] < mitad_x]
+            candidatos_ordenados = pref + resto
+        else:
+            candidatos_ordenados = list(todas_celdas_racks)
+
+        mapa_racks = {r.id_rack: r for r in wh.racks}
+        ocupacion_z = {}  # (x, y) -> siguiente nivel z
+
+        for idx_prod in range(cant_productos):
+            id_prod = f"P{idx_prod + 1:03d}"
+            nom_base = cls.CATALOGO_NOMBRES[idx_prod % len(cls.CATALOGO_NOMBRES)]
+            sufijo = f" #{idx_prod // len(cls.CATALOGO_NOMBRES) + 1}" if idx_prod >= len(cls.CATALOGO_NOMBRES) else ""
+            nombre_prod = f"{nom_base}{sufijo}"
+            peso_prod = round(random.uniform(0.4, 8.5), 1)
+            stock_prod = random.randint(25, 80)
+
+            rack_elegido = None
+            cx, cy, cz = None, None, None
+
+            # 1. Si hay localización personalizada para este producto, validarla dentro del rack
+            if ubicaciones_personalizadas and idx_prod < len(ubicaciones_personalizadas):
+                ub_custom = ubicaciones_personalizadas[idx_prod]
+                r_id = ub_custom.get("rack_id")
+                if r_id in mapa_racks:
+                    rack_elegido = mapa_racks[r_id]
+                else:
+                    rack_elegido = wh.racks[idx_prod % len(wh.racks)]
+
+                ux = ub_custom.get("x")
+                uy = ub_custom.get("y")
+                uz = ub_custom.get("z")
+                if ux is not None and uy is not None and rack_elegido.contiene_celda(int(ux), int(uy)):
+                    cx, cy = int(ux), int(uy)
+                else:
+                    celdas_r = celdas_por_rack[rack_elegido.id_rack]
+                    cx, cy = celdas_r[idx_prod % len(celdas_r)]
+                cz = max(1, min(3, int(uz))) if uz is not None else ((idx_prod % nivel_z_max) + 1)
+
+            # 2. Distribución Equitativa por Estante y Zona
+            elif "Equitativa" in modo_str:
+                rack_elegido = wh.racks[idx_prod % len(wh.racks)]
+                celdas_r = celdas_por_rack[rack_elegido.id_rack]
+                pasada = idx_prod // len(wh.racks)
+                cx, cy = celdas_r[(pasada * 2 + idx_prod) % len(celdas_r)]
+                z_prev = ocupacion_z.get((cx, cy), 0)
+                cz = (z_prev % nivel_z_max) + 1
+                ocupacion_z[(cx, cy)] = z_prev + 1
+
+            # 3. Concentrada (Cercanos, Fondo, Izquierda, Derecha)
+            elif any(k in modo_str for k in ("Cercanos", "Fondo", "Izquierda", "Derecha")):
+                ventana = max(1, min(len(candidatos_ordenados), max(4, len(candidatos_ordenados) // 2)))
+                rack_elegido, cx, cy = candidatos_ordenados[idx_prod % ventana]
+                z_prev = ocupacion_z.get((cx, cy), 0)
+                cz = (z_prev % nivel_z_max) + 1
+                ocupacion_z[(cx, cy)] = z_prev + 1
+
+            # 4. Aleatoria Uniforme en todos los estantes
+            else:
+                rack_elegido = random.choice(wh.racks)
+                cx, cy = random.choice(celdas_por_rack[rack_elegido.id_rack])
+                cz = random.randint(1, nivel_z_max)
+
+            wh.registrar_producto(Producto(
+                id_prod=id_prod,
+                nombre=nombre_prod,
+                x=cx,
+                y=cy,
+                z=cz,
+                stock=stock_prod,
+                peso=peso_prod,
+                rack_id=rack_elegido.id_rack
+            ))
+
+        # Generar Pedidos respetando la cantidad máxima de productos por pedido y el stock disponible
+        productos_creados = wh.productos.valores()
+        stock_restante = {pr.id_prod: pr.stock for pr in productos_creados}
+
+        for idx_ped in range(cant_pedidos):
+            id_ped = f"PED_{idx_ped + 1:02d}"
+            prioridad = random.randint(1, 5)
+            nuevo_ped = Pedido(id_pedido=id_ped, prioridad=prioridad, estado="PENDIENTE")
+
+            prods_con_stock = [pr for pr in productos_creados if stock_restante.get(pr.id_prod, 0) > 0]
+            if not prods_con_stock:
+                for pr in productos_creados:
+                    pr.stock += 20
+                    stock_restante[pr.id_prod] += 20
+                prods_con_stock = list(productos_creados)
+
+            tope_lineas = min(max_productos_por_pedido, len(prods_con_stock))
+            cant_lineas = random.randint(1, max(1, tope_lineas))
+            elegidos = random.sample(prods_con_stock, cant_lineas)
+
+            for pr_sel in elegidos:
+                disp = stock_restante[pr_sel.id_prod]
+                unidades = random.randint(1, max(1, min(max_unidades_por_item, disp)))
+                nuevo_ped.agregar_producto(pr_sel.id_prod, unidades)
+                stock_restante[pr_sel.id_prod] -= unidades
+
+            wh.registrar_pedido(nuevo_ped)
+
+        return wh
