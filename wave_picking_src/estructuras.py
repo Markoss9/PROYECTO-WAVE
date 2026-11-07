@@ -76,23 +76,6 @@ class TablaHash:
             actual = actual.siguiente
         return por_defecto
 
-    def eliminar(self, clave):
-        """Elimina una clave de la tabla si existe."""
-        indice = self._hash(clave)
-        actual = self.tabla[indice]
-        previo = None
-        while actual is not None:
-            if actual.clave == clave:
-                if previo is None:
-                    self.tabla[indice] = actual.siguiente
-                else:
-                    previo.siguiente = actual.siguiente
-                self.tamano -= 1
-                return True
-            previo = actual
-            actual = actual.siguiente
-        return False
-
     def contiene(self, clave):
         return self.obtener(clave) is not None
 
@@ -103,16 +86,6 @@ class TablaHash:
             actual = nodo
             while actual is not None:
                 resultado.append(actual.valor)
-                actual = actual.siguiente
-        return resultado
-
-    def claves(self):
-        """Retorna una lista con todas las claves almacenadas."""
-        resultado = []
-        for nodo in self.tabla:
-            actual = nodo
-            while actual is not None:
-                resultado.append(actual.clave)
                 actual = actual.siguiente
         return resultado
 
