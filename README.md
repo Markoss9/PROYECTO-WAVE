@@ -1,10 +1,10 @@
-# WMS Wave Picking & Multi-Picker Simulation System 📦🚀
+# WMS Wave Picking & Multi-Picker Simulation System 
 
 Simulador interactivo y optimizador logístico para centros de distribución (*Warehouse Management Systems* - WMS). Implementa la preparación de pedidos mediante la técnica de **Wave Picking (Agrupamiento por Olas)**, zonificación espacial del almacén, algoritmos de enrutamiento sobre grafos dirigidos (2D/3D) y un motor de simulación multi-agente con evasión reactiva de tráfico.
 
 ---
 
-## 📌 Tabla de Contenidos
+## Tabla de Contenidos
 - [Descripción del Proyecto](#-descripción-del-proyecto)
 - [Características Principales](#-características-principales)
 - [Requisitos del Sistema](#-requisitos-del-sistema)
@@ -17,7 +17,7 @@ Simulador interactivo y optimizador logístico para centros de distribución (*W
 
 ---
 
-## 📖 Descripción del Proyecto
+## Descripción del Proyecto
 
 El sistema modela un centro de distribución real compuesto por estanterías (*racks*), pasillos de circulación de sentido único o doble, puertas de carga y zonas de despacho con control dinámico de peso. 
 
@@ -30,7 +30,7 @@ A partir de una cartera de pedidos de clientes, el software:
 
 ---
 
-## ✨ Características Principales
+## Características Principales
 
 - **Algoritmos y Estructuras Nativas**: Implementación propia de **Tabla Hash** auto-redimensionable ($\alpha \le 0.75$), **Cola de Prioridad** (Min-Heap binario) y **Merge Sort** ($O(N \log N)$), sin dependencias externas pesadas.
 - **Topología Celular y Conectividad Fuerte**: Grafo dirigido con verificación automática de accesibilidad en pasillos de mano única.
@@ -42,7 +42,7 @@ A partir de una cartera de pedidos de clientes, el software:
 
 ---
 
-## 💻 Requisitos del Sistema
+## Requisitos del Sistema
 
 - **Python**: Versión **3.10 o superior** (compatible con Python 3.10, 3.11, 3.12 y 3.14).
 - **Sistema Operativo**: Windows 10/11, Linux (Ubuntu, Debian, Fedora, etc.) o macOS.
@@ -53,7 +53,7 @@ A partir de una cartera de pedidos de clientes, el software:
 
 ---
 
-## ⚙️ Instalación
+## Instalación
 
 1. **Clonar o descargar el repositorio**:
    ```bash
@@ -77,7 +77,7 @@ A partir de una cartera de pedidos de clientes, el software:
 
 ---
 
-## 🚀 Ejecución
+## Ejecución
 
 Para iniciar el simulador visual, ejecuta el archivo principal `main.py`.
 
@@ -98,7 +98,7 @@ Al iniciar, el sistema cargará automáticamente el escenario por defecto (`data
 
 ---
 
-## 🎮 Guía Rápida de Uso del Simulador
+## Guía Rápida de Uso del Simulador
 
 1. **Elegir Escenario**:
    - En el panel superior, haz clic en **"📂 Cargar Escenario JSON"** para abrir un archivo desde la carpeta `data/` (`escenario_basico.json` o `escenario_grande.json`), o selecciona **"⚙ Generar Escenario Automático"** para configurar dimensiones y cantidades personalizadas.
@@ -120,7 +120,7 @@ Al iniciar, el sistema cargará automáticamente el escenario por defecto (`data
 
 ---
 
-## 📂 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```text
 PROYECTO-WAVE/
@@ -146,7 +146,7 @@ PROYECTO-WAVE/
 
 ---
 
-## 🧭 Estrategias de Ruteo Disponibles
+## Estrategias de Ruteo Disponibles
 
 | Estrategia | Descripción | Ventajas Principales |
 | :--- | :--- | :--- |
@@ -156,7 +156,7 @@ PROYECTO-WAVE/
 
 ---
 
-## 👥 Créditos y Licencia
+## Créditos y Licencia
 
 - **Proyecto**: Sistema de Optimización de Wave Picking y Simulación Multi-Picker.
 - **Desarrollo**: Código modular bajo estándares de arquitectura limpia y principios SOLID.
