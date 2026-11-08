@@ -101,18 +101,18 @@ Al iniciar, el sistema cargará automáticamente el escenario por defecto (`data
 ## Guía Rápida de Uso del Simulador
 
 1. **Elegir Escenario**:
-   - En el panel superior, haz clic en **"📂 Cargar Escenario JSON"** para abrir un archivo desde la carpeta `data/` (`escenario_basico.json` o `escenario_grande.json`), o selecciona **"⚙ Generar Escenario Automático"** para configurar dimensiones y cantidades personalizadas.
+   - En el panel superior, haz clic en **"Cargar Escenario JSON"** para abrir un archivo desde la carpeta `data/` (`escenario_basico.json` o `escenario_grande.json`), o selecciona **"⚙ Generar Escenario Automático"** para configurar dimensiones y cantidades personalizadas.
 2. **Seleccionar Estrategia de Ruteo**:
    - En el menú desplegable, escoge entre:
      - **Estrategia A**: Orden de Pedidos (Secuencial).
      - **Estrategia B**: Cercanía 3D (Heurística Greedy + Altura $Z$).
      - **Estrategia C**: Barrido por Pasillos (S-Shape bilateral optimizado).
 3. **Controles de Simulación**:
-   - ▶ **Iniciar / Reanudar**: Comienza la animación continua del movimiento de los *pickers*.
-   - ⏸ **Pausar**: Detiene la marcha en el paso actual para inspeccionar el estado.
-   - ⏭ **Paso a Paso**: Avanza exactamente un ciclo de reloj para analizar desvíos y eventos.
-   - ⏹ **Reiniciar**: Regresa a todos los operarios y capacidades a su estado inicial.
-   - 🎚 **Control de Velocidad**: Deslizador para acelerar o ralentizar la animación en pantalla.
+   - **Iniciar / Reanudar**: Comienza la animación continua del movimiento de los *pickers*.
+   - **Pausar**: Detiene la marcha en el paso actual para inspeccionar el estado.
+   - **Paso a Paso**: Avanza exactamente un ciclo de reloj para analizar desvíos y eventos.
+   - **Reiniciar**: Regresa a todos los operarios y capacidades a su estado inicial.
+   - **Control de Velocidad**: Deslizador para acelerar o ralentizar la animación en pantalla.
 4. **Inspección de Datos**:
    - **Pestaña Zonas y Pickers**: Muestra el rango de columnas asignado a cada operario y su sublista de productos.
    - **Pestaña Comparativa**: Ejecuta y compara en una sola tabla el tiempo, operaciones y distancia total de las tres estrategias.
